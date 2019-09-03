@@ -46,7 +46,7 @@ Local handling for Tuya Devices under Home-Assistant and Hassio, getting paramet
                  {{ states.switch.tuya-sw01.attributes.current_consumption }}
                unit_of_measurement: 'W' 
 ```               
-   6. If all gone OK (your device's parameters local_key and device_id are correct), your switch is working, so the sensors are working too.
+   5. If you got all the parameters ok you should get working switch and sensors feeding readouts to HA
    
    NOTE: You can do as changes as you want in scripts ant/or yaml files. But: You can't declare your "custom_component" as "tuya", tuya is a forbidden word from 0.88 version or so. So if you declare a switch.tuya, the embedded (cloud based) Tuya component will be load instead custom_component one.
    
@@ -54,6 +54,7 @@ Local handling for Tuya Devices under Home-Assistant and Hassio, getting paramet
 
 # Thanks to:
 mileperhour, for all this work (I just tweaked it a bit)
+
 sean6541, for the working (standard) Python Handler for Tuya devices.
 
 some-other-user, i really can't find now, (i will credit/thank him here), who published a partialy Python script that inspired this solution
