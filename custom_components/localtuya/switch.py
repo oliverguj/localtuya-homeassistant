@@ -11,10 +11,13 @@ import homeassistant.helpers.config_validation as cv
 from time import time
 from threading import Lock
 
-REQUIREMENTS = ['pytuya==7.0.2']
+REQUIREMENTS = ['pytuya==7.0.4']
 
 CONF_DEVICE_ID = 'device_id'
 CONF_LOCAL_KEY = 'local_key'
+CONF_CURRENT = 'current'
+CONF_CURRENT_CONSUMPTION = 'current_consumption'
+CONF_VOLTAGE = 'voltage'
 
 DEFAULT_ID = '1'
 
@@ -34,6 +37,9 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_DEVICE_ID): cv.string,
     vol.Required(CONF_LOCAL_KEY): cv.string,
     vol.Optional(CONF_ID, default=DEFAULT_ID): cv.string,
+    vol.Optional(CONF_CURRENT, default='4'): cv.string,
+    vol.Optional(CONF_CURRENT_CONSUMPTION, default='5'): cv.string,
+    vol.Optional(CONF_VOLTAGE, default='6'): cv.string,
     vol.Optional(CONF_SWITCHES, default={}):
         vol.Schema({cv.slug: SWITCH_SCHEMA}),
 })
@@ -41,7 +47,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 
 def setup_platform(hass, config, add_devices, discovery_info=None):
     """Set up of the Tuya switch."""
-    import pytuya
+    from . import pytuya
 
     devices = config.get(CONF_SWITCHES)
     switches = []
@@ -60,7 +66,10 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
                     outlet_device,
                     device_config.get(CONF_FRIENDLY_NAME, object_id),
                     device_config.get(CONF_ICON),
-                    device_config.get(CONF_ID)
+                    device_config.get(CONF_ID),
+                    config.get(CONF_CURRENT),
+                    config.get(CONF_CURRENT_CONSUMPTION),
+                    config.get(CONF_VOLTAGE)
                 )
         )
 
@@ -71,7 +80,10 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
                     outlet_device,
                     name,
                     config.get(CONF_ICON),
-                    config.get(CONF_ID)
+                    config.get(CONF_ID),
+                    config.get(CONF_CURRENT),
+                    config.get(CONF_CURRENT_CONSUMPTION),
+                    config.get(CONF_VOLTAGE)
                 )
         )
 
@@ -117,13 +129,16 @@ class TuyaCache:
 class TuyaDevice(SwitchDevice):
     """Representation of a Tuya switch."""
 
-    def __init__(self, device, name, icon, switchid):
+    def __init__(self, device, name, icon, switchid, attr_current, attr_consumption, attr_voltage):
         """Initialize the Tuya switch."""
         self._device = device
         self._name = name
         self._state = False
         self._icon = icon
         self._switchid = switchid
+        self._attr_current = attr_current
+        self._attr_consumption = attr_consumption
+        self._attr_voltage = attr_voltage
         self._status = self._device.status()
 
     @property
@@ -140,9 +155,9 @@ class TuyaDevice(SwitchDevice):
     def device_state_attributes(self):
         attrs = {}
         try:
-            attrs[ATTR_CURRENT] = "{}".format(self._status['dps']['104'])
-            attrs[ATTR_CURRENT_CONSUMPTION] = "{}".format(self._status['dps']['105']/10)
-            attrs[ATTR_VOLTAGE] = "{}".format(self._status['dps']['106']/10)
+            attrs[ATTR_CURRENT] = "{}".format(self._status['dps'][self._attr_current])
+            attrs[ATTR_CURRENT_CONSUMPTION] = "{}".format(self._status['dps'][self._attr_consumption]/10)
+            attrs[ATTR_VOLTAGE] = "{}".format(self._status['dps'][self._attr_voltage]/10)
         except KeyError:
             pass
         return attrs
