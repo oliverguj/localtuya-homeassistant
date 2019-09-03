@@ -17,6 +17,7 @@ import socket
 import sys
 import time
 import colorsys
+import binascii
 
 try:
     #raise ImportError
@@ -27,14 +28,15 @@ except ImportError:
     import pyaes  # https://github.com/ricmoo/pyaes
 
 
-version_tuple = (7, 0, 2)
+version_tuple = (7, 0, 4)
 version = version_string = __version__ = '%d.%d.%d' % version_tuple
 __author__ = 'clach04'
 
 log = logging.getLogger(__name__)
-logging.basicConfig()  # TODO include function name/line numbers in log
+#logging.basicConfig()  # TODO include function name/line numbers in log
 #log.setLevel(level=logging.DEBUG)  # Debug hack!
 
+log.info('%s version %s', __name__, version)
 log.info('Python %s on %s', sys.version, sys.platform)
 if Crypto is None:
     log.info('Using pyaes version %r', pyaes.VERSION)
@@ -44,8 +46,10 @@ else:
     log.info('Using PyCrypto from %r', Crypto.__file__)
 
 SET = 'set'
+STATUS = 'status'
 
-PROTOCOL_VERSION_BYTES = b'3.1'
+PROTOCOL_VERSION_BYTES_31 = b'3.1'
+PROTOCOL_VERSION_BYTES_33 = b'3.3'
 
 IS_PY2 = sys.version_info[0] == 2
 
@@ -54,7 +58,7 @@ class AESCipher(object):
         #self.bs = 32  # 32 work fines for ON, does not work for OFF. Padding different compared to js version https://github.com/codetheweb/tuyapi/
         self.bs = 16
         self.key = key
-    def encrypt(self, raw):
+    def encrypt(self, raw, use_base64 = True):
         if Crypto:
             raw = self._pad(raw)
             cipher = AES.new(self.key, mode=AES.MODE_ECB)
@@ -66,11 +70,14 @@ class AESCipher(object):
             crypted_text += cipher.feed()  # flush final block
         #print('crypted_text %r' % crypted_text)
         #print('crypted_text (%d) %r' % (len(crypted_text), crypted_text))
-        crypted_text_b64 = base64.b64encode(crypted_text)
-        #print('crypted_text_b64 (%d) %r' % (len(crypted_text_b64), crypted_text_b64))
-        return crypted_text_b64
-    def decrypt(self, enc):
-        enc = base64.b64decode(enc)
+        if use_base64:
+            return base64.b64encode(crypted_text)
+        else:
+            return crypted_text
+            
+    def decrypt(self, enc, use_base64=True):
+        if use_base64:
+            enc = base64.b64decode(enc)
         #print('enc (%d) %r' % (len(enc), enc))
         #enc = self._unpad(enc)
         #enc = self._pad(enc)
@@ -150,6 +157,7 @@ class XenonDevice(object):
         self.local_key = local_key.encode('latin1')
         self.dev_type = dev_type
         self.connection_timeout = connection_timeout
+        self.version = 3.1
 
         self.port = 6668  # default - do not expect caller to pass in
 
@@ -171,6 +179,9 @@ class XenonDevice(object):
         data = s.recv(1024)
         s.close()
         return data
+
+    def set_version(self, version):
+        self.version = version
 
     def generate_payload(self, command, data=None):
         """
@@ -203,13 +214,20 @@ class XenonDevice(object):
         json_payload = json_payload.encode('utf-8')
         log.debug('json_payload=%r', json_payload)
 
-        if command == SET:
+        if self.version == 3.3:
+            self.cipher = AESCipher(self.local_key)  # expect to connect and then disconnect to set new
+            json_payload = self.cipher.encrypt(json_payload, False)
+            self.cipher = None
+            if command != STATUS:
+                # add the 3.3 header
+                json_payload = PROTOCOL_VERSION_BYTES_33 + b"\0\0\0\0\0\0\0\0\0\0\0\0" + json_payload
+        elif command == SET:
             # need to encrypt
             #print('json_payload %r' % json_payload)
             self.cipher = AESCipher(self.local_key)  # expect to connect and then disconnect to set new
             json_payload = self.cipher.encrypt(json_payload)
             #print('crypted json_payload %r' % json_payload)
-            preMd5String = b'data=' + json_payload + b'||lpv=' + PROTOCOL_VERSION_BYTES + b'||' + self.local_key
+            preMd5String = b'data=' + json_payload + b'||lpv=' + PROTOCOL_VERSION_BYTES_31 + b'||' + self.local_key
             #print('preMd5String %r' % preMd5String)
             m = md5()
             m.update(preMd5String)
@@ -217,7 +235,7 @@ class XenonDevice(object):
             hexdigest = m.hexdigest()
             #print(hexdigest)
             #print(hexdigest[8:][:16])
-            json_payload = PROTOCOL_VERSION_BYTES + hexdigest[8:][:16].encode('latin1') + json_payload
+            json_payload = PROTOCOL_VERSION_BYTES_31 + hexdigest[8:][:16].encode('latin1') + json_payload
             #print('data_to_send')
             #print(json_payload)
             #print('crypted json_payload (%d) %r' % (len(json_payload), json_payload))
@@ -238,13 +256,17 @@ class XenonDevice(object):
                           payload_dict[self.dev_type][command]['hexByte'] + 
                           '000000' +
                           postfix_payload_hex_len ) + postfix_payload
+
+        # calc the CRC of everything except where the CRC goes and the suffix
+        hex_crc = format(binascii.crc32(buffer[:-8]) & 0xffffffff, '08X')
+        buffer = buffer[:-8] + hex2bin(hex_crc) + buffer[-4:]
         #print('command', command)
         #print('prefix')
         #print(payload_dict[self.dev_type][command]['prefix'])
         #print(repr(buffer))
         #print(bin2hex(buffer, pretty=True))
         #print(bin2hex(buffer, pretty=False))
-        #print('full buffer(%d) %r' % (len(buffer), buffer))
+        #print('full buffer(%d) %r' % (len(buffer), " ".join("{:02x}".format(ord(c)) for c in buffer)))
         return buffer
     
 class Device(XenonDevice):
@@ -268,14 +290,21 @@ class Device(XenonDevice):
             if not isinstance(result, str):
                 result = result.decode()
             result = json.loads(result)
-        elif result.startswith(PROTOCOL_VERSION_BYTES):
+        elif result.startswith(PROTOCOL_VERSION_BYTES_31):
             # got an encrypted payload, happens occasionally
             # expect resulting json to look similar to:: {"devId":"ID","dps":{"1":true,"2":0},"t":EPOCH_SECS,"s":3_DIGIT_NUM}
             # NOTE dps.2 may or may not be present
-            result = result[len(PROTOCOL_VERSION_BYTES):]  # remove version header
+            result = result[len(PROTOCOL_VERSION_BYTES_31):]  # remove version header
             result = result[16:]  # remove (what I'm guessing, but not confirmed is) 16-bytes of MD5 hexdigest of payload
             cipher = AESCipher(self.local_key)
             result = cipher.decrypt(result)
+            log.debug('decrypted result=%r', result)
+            if not isinstance(result, str):
+                result = result.decode()
+            result = json.loads(result)
+        elif self.version == 3.3: 
+            cipher = AESCipher(self.local_key)
+            result = cipher.decrypt(result, False)
             log.debug('decrypted result=%r', result)
             if not isinstance(result, str):
                 result = result.decode()
@@ -303,7 +332,26 @@ class Device(XenonDevice):
         log.debug('set_status received data=%r', data)
 
         return data
+    
+    def set_value(self, index, value):
+        """
+        Set int value of any index.
 
+        Args:
+            index(int): index to set
+            value(int): new value for the index
+        """
+        # open device, send request, then close connection
+        if isinstance(index, int):
+            index = str(index)  # index and payload is a string
+
+        payload = self.generate_payload(SET, {
+            index: value})
+        
+        data = self._send_receive(payload)
+        
+        return data
+    
     def turn_on(self, switch=1):
         """Turn the device on"""
         self.set_status(True, switch)
@@ -338,6 +386,7 @@ class OutletDevice(Device):
     def __init__(self, dev_id, address, local_key=None):
         dev_type = 'device'
         super(OutletDevice, self).__init__(dev_id, address, local_key, dev_type)
+        
 
 class BulbDevice(Device):
     DPS_INDEX_ON         = '1'
@@ -349,6 +398,14 @@ class BulbDevice(Device):
     DPS             = 'dps'
     DPS_MODE_COLOUR = 'colour'
     DPS_MODE_WHITE  = 'white'
+    
+    DPS_2_STATE = {
+                '1':'is_on',
+                '2':'mode',
+                '3':'brightness',
+                '4':'colourtemp',
+                '5':'colour',
+                }
 
     def __init__(self, dev_id, address, local_key=None):
         dev_type = 'device'
@@ -441,7 +498,7 @@ class BulbDevice(Device):
         if not 0 <= b <= 255:
             raise ValueError("The value for blue needs to be between 0 and 255.")
 
-        print(BulbDevice)
+        #print(BulbDevice)
         hexvalue = BulbDevice._rgb_to_hexvalue(r, g, b)
 
         payload = self.generate_payload(SET, {
@@ -519,11 +576,10 @@ class BulbDevice(Device):
 
     def state(self):
         status = self.status()
-        state = {
-            'is_on'      : status[self.DPS][self.DPS_INDEX_ON],
-            'mode'       : status[self.DPS][self.DPS_INDEX_MODE],
-            'brightness' : status[self.DPS][self.DPS_INDEX_BRIGHTNESS],
-            'colourtemp' : status[self.DPS][self.DPS_INDEX_COLOURTEMP],
-            'colour'     : status[self.DPS][self.DPS_INDEX_COLOUR],
-            }
+        state = {}
+
+        for key in status[self.DPS].keys():
+            if(int(key)<=5):
+                state[self.DPS_2_STATE[key]]=status[self.DPS][key]
+
         return state
