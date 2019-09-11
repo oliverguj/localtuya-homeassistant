@@ -19,12 +19,12 @@ Local handling for Tuya Devices under Home-Assistant and Hassio, getting paramet
            current_consumption: 5
            voltage: 6
            switches:
-             switch1:
-             friendly_name: TUYA_LED
-             id: 1
-           switch2:
-             friendly_name: TUYA_SW01
-             id: 101
+             some_switch1:
+               friendly_name: TUYA_LED
+               id: 1
+             switch2:
+               friendly_name: TUYA_SW01
+               id: 101
 ```
    NOTE: Values reported in attributes are already in (respectively) Amps, Watts and Volts.
 
@@ -35,15 +35,15 @@ Local handling for Tuya Devices under Home-Assistant and Hassio, getting paramet
            sensors:
              tuya-sw01_voltage:
                value_template: >-
-                 {{ states.switch.tuya-sw01.attributes.voltage }}
+                 {{ states.switch.some_switch1.attributes.voltage }}
                unit_of_measurement: 'V' 
              tuya-sw01_current:
                acs_voltage: >-     
-                 {{ states.switch.tuya-sw01.attributes.current }}
+                 {{ states.switch.some_switch1.attributes.current }}
                unit_of_measurement: 'A'      
              tuya-sw01_current_consumption:
                value_template: >-
-                 {{ states.switch.tuya-sw01.attributes.current_consumption }}
+                 {{ states.switch.some_switch1.attributes.current_consumption }}
                unit_of_measurement: 'W' 
 ```               
    5. If you got all the parameters ok you should get working switch and sensors feeding readouts to HA
