@@ -15,6 +15,7 @@ Local handling for Tuya Devices under Home-Assistant and Hassio, getting paramet
            host: 192.168.1.251
            local_key: 1234567890abcdef
            device_id: abcdef1234567890abcdef
+           protocol: 3.3
            current: 4
            current_consumption: 5
            voltage: 6

@@ -18,6 +18,7 @@ CONF_LOCAL_KEY = 'local_key'
 CONF_CURRENT = 'current'
 CONF_CURRENT_CONSUMPTION = 'current_consumption'
 CONF_VOLTAGE = 'voltage'
+CONF_PROTOCOL = 'protocol'
 
 DEFAULT_ID = '1'
 
@@ -40,8 +41,9 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_CURRENT, default='4'): cv.string,
     vol.Optional(CONF_CURRENT_CONSUMPTION, default='5'): cv.string,
     vol.Optional(CONF_VOLTAGE, default='6'): cv.string,
+    vol.Optional(CONF_PROTOCOL, default='3.1'): cv.string,
     vol.Optional(CONF_SWITCHES, default={}):
-        vol.Schema({cv.slug: SWITCH_SCHEMA}),
+    vol.Schema({cv.slug: SWITCH_SCHEMA}),
 })
 
 
@@ -57,7 +59,8 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
             config.get(CONF_DEVICE_ID),
             config.get(CONF_HOST),
             config.get(CONF_LOCAL_KEY)
-        )
+        ),
+        config.get(CONF_PROTOCOL)
     )
 
     for object_id, device_config in devices.items():
@@ -92,11 +95,12 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
 class TuyaCache:
     """Cache wrapper for pytuya.OutletDevice"""
 
-    def __init__(self, device):
+    def __init__(self, device, protocol):
         """Initialize the cache."""
         self._cached_status = ''
         self._cached_status_time = 0
         self._device = device
+        self._device.set_version(float(protocol))
         self._lock = Lock()
 
     def __get_status(self):
