@@ -9,6 +9,7 @@ from homeassistant.components.switch import SwitchDevice, PLATFORM_SCHEMA
 from homeassistant.const import (CONF_NAME, CONF_HOST, CONF_ID, CONF_SWITCHES, CONF_FRIENDLY_NAME, CONF_ICON)
 import homeassistant.helpers.config_validation as cv
 from time import time
+from time import sleep
 from threading import Lock
 
 REQUIREMENTS = ['pytuya==7.0.4']
@@ -124,6 +125,7 @@ class TuyaCache:
         try:
             now = time()
             if not self._cached_status or now - self._cached_status_time > 20:
+                sleep(0.5)
                 self._cached_status = self.__get_status()
                 self._cached_status_time = time()
             return self._cached_status
@@ -184,4 +186,3 @@ class TuyaDevice(SwitchDevice):
         status = self._device.status()
         self._status= status
         self._state = status['dps'][self._switchid]
-
