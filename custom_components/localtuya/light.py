@@ -1,9 +1,9 @@
 """
-Simple platform to control LOCALLY Tuya switch devices.
+Simple platform to control LOCALLY Tuya light devices.
 
 Sample config yaml
 
-switch:
+light:
   - platform: localtuya
     host: 192.168.0.1
     local_key: 1234567891234567
