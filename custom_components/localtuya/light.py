@@ -1,9 +1,9 @@
 """
-Simple platform to control LOCALLY Tuya light devices.
+Simple platform to control LOCALLY Tuya switch devices.
 
 Sample config yaml
 
-light:
+switch:
   - platform: localtuya
     host: 192.168.0.1
     local_key: 1234567891234567
@@ -19,12 +19,8 @@ from threading import Lock
 import logging
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
-    ATTR_COLOR_TEMP,
-    ATTR_HS_COLOR,
     ENTITY_ID_FORMAT,
     SUPPORT_BRIGHTNESS,
-    SUPPORT_COLOR,
-    SUPPORT_COLOR_TEMP,
     Light,
     PLATFORM_SCHEMA
 )
@@ -107,7 +103,7 @@ class TuyaCache:
         self._lock.acquire()
         try:
             now = time()
-            if not self._cached_status or now - self._cached_status_time > 30:
+            if not self._cached_status or now - self._cached_status_time > 20:
                 sleep(0.5)
                 self._cached_status = self.__get_status(switchid)
                 self._cached_status_time = time()
@@ -118,23 +114,12 @@ class TuyaCache:
     def cached_status(self):
         return self._cached_status
 
-    def support_color(self):
-        return self._device.support_color()
-
-    def support_color_temp(self):
-        return self._device.support_color_temp()
-
     def brightness(self):
         return self._device.brightness()
-
-    def color_temp(self):
-        return self._device.colourtemp()
 
     def set_brightness(self, brightness):
         self._device.set_brightness(brightness)
 
-    def set_color_temp(self, color_temp):
-        self._device.set_colourtemp(color_temp)
     def state(self):
         self._device.state();
 
@@ -178,10 +163,9 @@ class TuyaDevice(Light):
     @property
     def brightness(self):
         """Return the brightness of the light."""
-        """Pytuya uses 25 - 255 for color temp, use same convention elsewhere 153 to 500"""
         if self._device.brightness() is None:
             return None
-        brightness = (self._device.brightness()/1000) * 255
+        brightness = self._device.brightness()
         if brightness > 254:
            brightness = 255
         if brightness < 1:
@@ -194,40 +178,17 @@ class TuyaDevice(Light):
 #        """Return the hs_color of the light."""
 #        return (self._device.color_hsv()[0],self._device.color_hsv()[1])
 
-    @property
-    def color_temp(self):
-        """Return the color_temp of the light."""
-        """Pytuya uses 0 - 1000 for color temp, use same convention elsewhere 153 to 500"""
-        color_temp = self._device.color_temp()
-        if color_temp is None:
-            return None
-        return int(500 - ( ( (500-153)/1000) * color_temp))
-
-    @property
-    def min_mireds(self):
-        """Return color temperature min mireds."""
-        return 153
-
-    @property
-    def max_mireds(self):
-        """Return color temperature max mireds."""
-        return 500
-
     def turn_on(self, **kwargs):
         """Turn on or control the light."""
         log.debug("Turning on, state: " + str(self._device.cached_status()))
         if  not self._device.cached_status():
             self._device.set_status(True, self._bulb_id)
         if ATTR_BRIGHTNESS in kwargs:
-            converted_brightness = int( (1000 / 255) * (int(kwargs[ATTR_BRIGHTNESS]) ))
-            if converted_brightness <= 10:
-                converted_brightness = 10
+            print(kwargs[ATTR_BRIGHTNESS])
+            converted_brightness = int(kwargs[ATTR_BRIGHTNESS])
+            if converted_brightness <= 25:
+                converted_brightness = 25
             self._device.set_brightness(converted_brightness)
-        if ATTR_HS_COLOR in kwargs:
-            raise ValueError(" TODO implement RGB from HS")
-        if ATTR_COLOR_TEMP in kwargs:
-            color_temp = 1000 - (1000 / (500 - 153)) * (int(kwargs[ATTR_COLOR_TEMP]) - 153)
-            self._device.set_color_temp(int(color_temp))
 
     def turn_off(self, **kwargs):
         """Turn Tuya switch off."""
@@ -241,5 +202,5 @@ class TuyaDevice(Light):
         #    supports = supports | SUPPORT_COLOR
         #if self._device.support_color_temp():
         #    supports = supports | SUPPORT_COLOR_TEMP
-        supports = supports | SUPPORT_COLOR_TEMP
+        # supports = supports | SUPPORT_COLOR_TEMP
         return supports
